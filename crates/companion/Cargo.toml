@@ -1,0 +1,21 @@
+[package]
+name = "companion"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native Win32 GUI companion, in-process command dispatcher, live telemetry dashboard, and local login-state reset for Toram Online"
+
+[lib]
+name = "companion"
+path = "src/lib.rs"
+
+[[bin]]
+name = "companion"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { path = "../protocol" }
+wboot = { path = "../wboot" }
+

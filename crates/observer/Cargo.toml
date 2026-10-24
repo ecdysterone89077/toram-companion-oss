@@ -1,0 +1,16 @@
+[package]
+name = "observer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure Rust combat observation, memory telemetry sensor, and 3D geometry engine"
+
+[[bin]]
+name = "observer"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { path = "../protocol" }
+wboot = { path = "../wboot" }

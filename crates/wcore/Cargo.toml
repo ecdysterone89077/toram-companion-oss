@@ -1,0 +1,16 @@
+[package]
+name = "wcore"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Internal IL2CPP memory & method-hook runtime for Toram Online"
+
+[lib]
+name = "wcore"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+protocol = { path = "../protocol" }
+

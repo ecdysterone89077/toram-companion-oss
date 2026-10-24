@@ -1,0 +1,30 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/protocol",
+    "crates/wcore",
+    "crates/wboot",
+    "crates/companion",
+    "crates/observer",
+    "crates/xtask",
+]
+
+[workspace.package]
+version = "0.96.4-rc.11"
+edition = "2021"
+authors = ["Faunass <mysticgate38041@users.noreply.github.com>"]
+license = "MIT"
+repository = "https://github.com/ecdysterone89077/toram-companion-oss"
+homepage = "https://github.com/ecdysterone89077/toram-companion-oss"
+readme = "README.md"
+keywords = ["unity", "il2cpp", "telemetry", "diagnostics", "reverse-engineering"]
+categories = ["development-tools", "development-tools::profiling"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = "symbols"
+overflow-checks = false
+incremental = false

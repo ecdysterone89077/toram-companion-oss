@@ -1,0 +1,116 @@
+#requires -Version 7.0
+param(
+    [string]$Packager = (Join-Path $PSScriptRoot '../package-release.ps1'),
+    [string]$EvidenceRoot = (Join-Path $PSScriptRoot '../work/package-release-checks')
+)
+
+$ErrorActionPreference = 'Stop'
+$Packager = (Resolve-Path -LiteralPath $Packager).Path
+$EvidenceRoot = [System.IO.Path]::GetFullPath($EvidenceRoot)
+$fixture = Join-Path $EvidenceRoot ('fixture-' + [guid]::NewGuid().ToString('N'))
+[System.IO.Directory]::CreateDirectory($fixture) | Out-Null
+$checks = [System.Collections.Generic.List[string]]::new()
+
+function Assert-Check([bool]$Condition, [string]$Name) {
+    if (-not $Condition) { throw "Regression failed: $Name (fixture: $fixture)" }
+    $checks.Add($Name)
+}
+
+function Write-Fixture([string]$Relative, [string]$Text) {
+    $path = Join-Path $fixture $Relative
+    [System.IO.Directory]::CreateDirectory((Split-Path -Parent $path)) | Out-Null
+    [System.IO.File]::WriteAllText($path, $Text)
+}
+
+function Invoke-Packager([string]$Version, [string]$LogName, [string]$ArtifactRoot = '') {
+    $log = Join-Path $fixture $LogName
+    $extra = @()
+    if ($ArtifactRoot) { $extra = @('-ArtifactRoot', $ArtifactRoot) }
+    & (Join-Path $PSHOME 'pwsh.exe') -NoProfile -File $Packager -Root $fixture -Version $Version @extra *> $log
+    return $LASTEXITCODE
+}
+
+function Get-FixtureHashes {
+    $hashes = @{}
+    Get-ChildItem -LiteralPath (Join-Path $fixture 'dist') -Recurse -File -Force | ForEach-Object {
+        $hashes[$_.FullName] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+    return $hashes
+}
+
+# These are text fixtures, never executable game artifacts.
+foreach ($file in @('companion.exe', 'src/wcore.dll', 'src/wboot.exe', 'observer.exe')) {
+    Write-Fixture $file "placeholder for $file"
+}
+Write-Fixture 'Cargo.toml' '[workspace]'
+Write-Fixture 'Cargo.lock' 'version = 4'
+Write-Fixture '.cargo/config.toml' '[build]'
+Write-Fixture 'crates/protocol/Cargo.toml' '[package]'
+Write-Fixture 'crates/protocol/src/lib.rs' 'pub const TELEMETRY_VERSION: u32 = 962;'
+Write-Fixture 'README.md' '# Synthetic package regression fixture'
+Write-Fixture '.gitignore' 'target/'
+Write-Fixture 'specs/fixture.md' 'No gameplay evidence.'
+Copy-Item -LiteralPath $Packager -Destination (Join-Path $fixture 'package-release.ps1')
+Write-Fixture 'scripts/package_release_checks.ps1' ([System.IO.File]::ReadAllText($PSCommandPath))
+
+$version = '0.0.0-check'
+$stem = 'Toram-Companion-v' + $version
+Assert-Check ((Invoke-Packager $version 'package.log') -eq 0) 'fixture packaging succeeds'
+$stage = Join-Path $fixture "dist/$stem-win64"
+$manifest = Get-Content -LiteralPath (Join-Path $stage 'BUILD_MANIFEST.json') -Raw | ConvertFrom-Json
+$checksumRows = @(Get-Content -LiteralPath (Join-Path $stage 'SHA256SUMS.txt'))
+foreach ($row in $checksumRows) {
+    if ($row -notmatch '^([A-Fa-f0-9]{64})  (.+)$') { throw "Invalid checksum row: $row" }
+    $expected = $Matches[1]
+    $relative = $Matches[2]
+    Assert-Check (-not [System.IO.Path]::IsPathRooted($relative) -and -not $relative.StartsWith('dist/')) "package-relative checksum: $relative"
+    $file = Join-Path $stage $relative
+    Assert-Check (Test-Path -LiteralPath $file -PathType Leaf) "checksum file exists: $relative"
+    Assert-Check ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -eq $expected) "checksum matches: $relative"
+}
+Assert-Check ($checksumRows.Count -eq @(Get-ChildItem -LiteralPath $stage -Recurse -File -Force).Count - 1) 'checksums cover every packaged file except themselves'
+Assert-Check ($manifest.schema_version -eq 2) 'manifest schema identifies revised evidence semantics'
+foreach ($field in @('workspace_tests', 'child_reader_probe', 'release_build', 'current_build_live_test')) {
+    Assert-Check ($manifest.validation.$field -like 'not run by packager*') "no fabricated verification: $field"
+}
+Assert-Check ($manifest.source_binary_correspondence -like 'not verified*') 'source and binary correspondence stays explicit'
+$sourceZip = [System.IO.Compression.ZipFile]::OpenRead((Join-Path $fixture "dist/$stem-source.zip"))
+try {
+    $entries = @($sourceZip.Entries.FullName -replace '\\', '/')
+    Assert-Check ($entries -contains '.cargo/config.toml') 'source archive includes build configuration'
+    Assert-Check ($entries -contains '.gitignore') 'source archive includes dotfiles'
+    Assert-Check ($entries -contains 'package-release.ps1') 'source archive includes the packager'
+    Assert-Check ($entries -contains 'scripts/package_release_checks.ps1') 'source archive includes packaging regressions'
+} finally { $sourceZip.Dispose() }
+
+$before = Get-FixtureHashes
+Assert-Check ((Invoke-Packager $version 'repeat.log') -ne 0) 'existing release rejected'
+$after = Get-FixtureHashes
+Assert-Check ($before.Count -eq $after.Count) 'repeat preserves the output file set'
+Assert-Check (@($before.Keys | Where-Object { $before[$_] -ne $after[$_] }).Count -eq 0) 'repeat preserves all output hashes'
+Assert-Check ((Invoke-Packager '../escape' 'invalid-version.log') -ne 0) 'version path traversal rejected'
+Assert-Check ((Invoke-Packager '0.0.0-check/child' 'invalid-separator.log') -ne 0) 'version separator rejected'
+$afterInvalid = Get-FixtureHashes
+Assert-Check ($before.Count -eq $afterInvalid.Count -and @($before.Keys | Where-Object { $before[$_] -ne $afterInvalid[$_] }).Count -eq 0) 'invalid versions preserve all existing outputs'
+
+$separateArtifacts = Join-Path $fixture 'candidate'
+foreach ($file in @('companion.exe', 'src/wcore.dll', 'src/wboot.exe', 'observer.exe')) {
+    Write-Fixture "candidate/$file" "rebuilt candidate fixture for $file"
+}
+Assert-Check ((Invoke-Packager '0.0.0-staged' 'separate-stage.log' $separateArtifacts) -eq 0) 'separate artifact root packages successfully'
+foreach ($file in @('companion.exe', 'src/wcore.dll', 'src/wboot.exe', 'observer.exe')) {
+    $packaged = Join-Path $fixture "dist/Toram-Companion-v0.0.0-staged-win64/$file"
+    $candidateHash = (Get-FileHash -LiteralPath (Join-Path $separateArtifacts $file) -Algorithm SHA256).Hash
+    Assert-Check ((Get-FileHash -LiteralPath $packaged -Algorithm SHA256).Hash -eq $candidateHash) "selected candidate packaged: $file"
+    Assert-Check ((Get-Content -LiteralPath (Join-Path $fixture $file) -Raw) -eq "placeholder for $file") "canonical artifact preserved: $file"
+}
+
+$result = [ordered]@{
+    passed = $checks.Count
+    checks = $checks
+    fixture = $fixture
+    packager_sha256 = (Get-FileHash -LiteralPath $Packager -Algorithm SHA256).Hash
+    runtime_artifacts = 'synthetic text only'
+}
+$result | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixture 'checks.json')
+$result | ConvertTo-Json -Depth 4

@@ -1,0 +1,25 @@
+# Force GitHub Linguist to treat the repository as 100% Rust
+*.md linguist-documentation
+*.toml linguist-documentation
+*.lock linguist-documentation
+*.json linguist-documentation
+*.yaml linguist-documentation
+*.yml linguist-documentation
+.gitattributes linguist-documentation
+.gitignore linguist-documentation
+
+# Vendor all scripts and documentation assets so only Rust counts towards code stats
+*.py linguist-vendored
+*.ps1 linguist-vendored
+*.bat linguist-vendored
+*.sh linguist-vendored
+tools/** linguist-vendored
+scripts/** linguist-vendored
+specs/** linguist-documentation
+.agents/** linguist-vendored
+agent/** linguist-vendored
+
+# Stable instruction bytes across Windows and Unix checkouts.
+AGENTS.md text eol=lf
+opencode.jsonc text eol=lf
+prompts/*.md text eol=lf

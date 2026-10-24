@@ -1,0 +1,20 @@
+[package]
+name = "wboot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Remote PEB-aware module loader, shadow-copy stager, and direct command dispatcher for Toram Online"
+
+[lib]
+name = "wboot"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wboot"
+path = "src/main.rs"
+
+[dependencies]
+protocol = { path = "../protocol" }
+

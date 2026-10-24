@@ -1,0 +1,63 @@
+# Build & target artifacts
+target/
+dist/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.zip
+*.tar.gz
+*.7z
+
+# Python / byte code
+__pycache__/
+*.pyc
+
+# Mobile / APK dumps
+*.apk
+*.idsig
+*.ab
+
+# Log files and crash dumps
+*.log
+*.dmp
+
+# Downloaded metadata dumps (large, and not ours to track)
+*_dump.cs
+build_err.txt
+
+# Raw dumps and reverse-engineering scratch
+dump/
+il2cppdumper/
+as_out/
+ascli/
+base/
+mod/
+work/
+strix_runs/
+wifi-ont/
+*.txt
+*.json
+*.bin
+*.cus
+*.tcmp
+!Cargo.lock
+!Cargo.toml
+!skills-lock.json
+
+# Local editor & agent config
+.claude/
+.commandcode/
+query
+specs/verification/v49-baseline/
+specs/handoff-archive/
+
+# Scratch reverse-engineering scripts & local launchers
+find_*.py
+test_*.py
+disasm_cs.py
+
+# Local registry exports (can contain live session state)
+*.reg
+
+

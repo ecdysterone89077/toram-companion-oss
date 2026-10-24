@@ -1,0 +1,37 @@
+bugs:
+  - bug_id: BUG-2026-10-16-v49
+    date: 2026-10-16
+    severity: high
+    priority: high
+    scope: worker-lifecycle
+    status: offline-fixed-runtime-unverified
+    summary: Missing cooperative lifecycle and attached idle worker; incident causality unresolved.
+    file: specs/bugs/BUG-2026-10-16-v49-lifecycle.md
+
+  - bug_id: BUG-2026-10-19-critical-damage-acceptance
+    date: 2026-10-19
+    severity: high
+    priority: medium
+    scope: combat-critical-damage
+    status: feature-retired
+    summary: >-
+      The +1000 critical damage override was accepted by the worker but never
+      accepted by the server; damage was displayed and the target survived.
+      Recorded as a failed feature. The command stays available for
+      compatibility but is labelled UNSAFE and the safe ladder is +100/+200/+300.
+    file: specs/bugs/BUG-2026-10-19-critical-damage-acceptance.md
+
+  - bug_id: BUG-2026-10-21-movement-spec-source-drift
+    date: 2026-10-21
+    severity: critical
+    priority: critical
+    scope: process-documentation-integrity
+    status: closed
+    summary: >-
+      Two incident specs described a movement and no-collision fix that was never
+      applied to the source, so the canonical core still carried the flat
+      20.0f speed, the forced GM dash flag and the disabled floor anchor.
+      The drift was found by verifying the source against the claims, the
+      movement implementation was reworked, and the claims were rewritten to
+      match the code.
+    file: specs/MOVEMENT_SAFETY_REWORK_20261021.md

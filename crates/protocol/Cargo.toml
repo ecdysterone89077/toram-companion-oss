@@ -1,0 +1,13 @@
+[package]
+name = "protocol"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared command protocol and lock-free Win32 shared memory telemetry for Toram Online"
+
+[lib]
+name = "protocol"
+path = "src/lib.rs"
+
