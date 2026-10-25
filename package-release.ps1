@@ -62,6 +62,8 @@ $sourceInputs += "Cargo.toml"
 $sourceInputs += "Cargo.lock"
 $sourceInputs += "package-release.ps1"
 $sourceInputs += "scripts/package_release_checks.ps1"
+$sourceInputs += (Get-ChildItem -Path "scripts" -Recurse -File -Include "*.py","*.ps1" |
+    Sort-Object FullName | ForEach-Object { Get-RelPath $Root $_.FullName })
 $sourceInputs = $sourceInputs | Sort-Object -Unique
 
 $sourceManifest = @()
@@ -74,11 +76,11 @@ foreach ($rel in $sourceInputs) {
 $docInputs = @(
     "README.md", "CHANGELOG.md", "LICENSE", "RELEASE_NOTES.md", "VALIDATION.md",
     "MODLOG.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md",
-    ".gitattributes", ".gitignore"
+    ".gitattributes", ".gitignore", "scripts/README.md"
 )
 $docInputs = @($docInputs | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf })
 
-$specInputs = @(Get-ChildItem -Path "specs" -File -Filter "*.md" | Sort-Object Name |
+$specInputs = @(Get-ChildItem -Path "specs" -Recurse -File -Include "*.md","*.yaml" | Sort-Object FullName |
     ForEach-Object { Get-RelPath $Root $_.FullName })
 
 # --- stage the win64 directory ----------------------------------------------
@@ -90,9 +92,13 @@ foreach ($a in $artifacts) {
     Copy-Item -LiteralPath $a.Source -Destination (Join-Path $stageDir $a.Path)
 }
 foreach ($d in $docInputs) {
+    $parent = Split-Path -Parent (Join-Path $stageDir $d)
+    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     Copy-Item -LiteralPath $d -Destination (Join-Path $stageDir $d)
 }
 foreach ($s in $specInputs) {
+    $parent = Split-Path -Parent (Join-Path $stageDir $s)
+    if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
     Copy-Item -LiteralPath $s -Destination (Join-Path $stageDir $s)
 }
 

@@ -11,6 +11,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from faunas_target_audit import (
     DEFAULT_LEGACY_SOURCE,
@@ -323,14 +324,13 @@ class DumpCorrespondenceChecks(unittest.TestCase):
     """
 
     def test_a_dump_that_does_not_match_the_record_is_refused(self):
-        handle = tempfile.NamedTemporaryFile("w", suffix="_dump.cs",
-                                             delete=False, encoding="utf-8")
-        try:
-            handle.write("class Nope { }\n")
-            handle.close()
-            corresponds, reason = dump_correspondence(Path(handle.name))
-        finally:
-            os.unlink(handle.name)
+        with tempfile.TemporaryDirectory() as tmp:
+            dump = Path(tmp) / "fixture_dump.cs"
+            dump.write_text("class Nope { }\n", encoding="utf-8")
+            verification = Path(tmp) / "verification.json"
+            verification.write_text(json.dumps({"sha256": "0" * 64}), encoding="utf-8")
+            with patch("faunas_target_audit.DUMP_VERIFICATION", verification):
+                corresponds, reason = dump_correspondence(dump)
         self.assertFalse(corresponds)
         self.assertIn("digest", reason)
 

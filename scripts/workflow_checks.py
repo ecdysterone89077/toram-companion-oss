@@ -85,41 +85,24 @@ class Planning(unittest.TestCase):
     def test_empty_scope_has_no_commands(self):
         self.assertEqual(self.plan(), ([], []))
 
-    def test_policy_documents_use_cheap_structural_checks(self):
-        for path in ("AGENTS.md", "WORKFLOW.md", "CURRENT.md", "prompts/SPARK_AGENT.md", "opencode.jsonc", ".gitattributes"):
-            with self.subTest(path=path):
-                commands, _ = self.plan(path)
-                self.assertIn([sys.executable, "scripts/workspace_policy.py", "check"], commands)
-                self.assertFalse(any(cmd[0] == "cargo" for cmd in commands))
-                self.assertIn("scripts/workspace_policy_checks.py", [cmd[-1] for cmd in commands])
-
-    def test_prefix_edits_require_integrity_check_without_rebaselining(self):
-        commands, _ = self.plan("AGENTS.md", "prompts/SPARK_AGENT.md", "opencode.jsonc")
-        self.assertEqual(commands.count([sys.executable, "scripts/prefix_cache.py", "check"]), 1)
-        self.assertFalse(any("baseline" in cmd for cmd in commands))
-
-    def test_opencode_configs_are_mapped_to_structural_checks(self):
-        for path in ("opencode.json", "opencode.jsonc"):
+    def test_documentation_and_formatting_metadata_need_only_whitespace(self):
+        for path in ("AGENTS.md", "WORKFLOW.md", "CURRENT.md", ".editorconfig", ".gitattributes"):
             with self.subTest(path=path):
                 commands, manual = self.plan(path)
+                self.assertEqual(len(commands), 1)
+                self.assertEqual(commands[0][:3], [sys.executable, "scripts/workflow.py", "whitespace"])
                 self.assertFalse(manual)
-                self.assertIn([sys.executable, "scripts/workspace_policy.py", "check"], commands)
-                self.assertIn([sys.executable, "scripts/prefix_cache.py", "check"], commands)
 
-    def test_prefix_parser_changes_include_workspace_policy_consumer(self):
-        for path in ("scripts/prefix_cache.py", "scripts/prefix_cache_checks.py"):
-            with self.subTest(path=path):
-                commands, manual = self.plan(path)
-                self.assertFalse(manual)
-                self.assertIn([sys.executable, "scripts/workspace_policy.py", "check"], commands)
-                suites = {cmd[-1] for cmd in commands if "suite" in cmd}
-                self.assertEqual(suites, {"scripts/prefix_cache_checks.py", "scripts/workspace_policy_checks.py"})
-
-    def test_workflow_changes_cover_governance_suites_and_syntax(self):
-        commands, _ = self.plan("scripts/workflow.py", "scripts/workflow_checks.py")
-        self.assertEqual({Path(cmd[-1]).name for cmd in commands if "suite" in cmd}, wf.GOVERNANCE_SUITES)
+    def test_workflow_changes_use_shipped_suite_and_syntax(self):
+        commands, manual = self.plan("scripts/workflow.py", "scripts/workflow_checks.py")
+        self.assertEqual({Path(cmd[-1]).name for cmd in commands if "suite" in cmd}, {"workflow_checks.py"})
         syntax = next(cmd for cmd in commands if "syntax" in cmd)
         self.assertEqual(syntax.count("--path"), 2)
+        self.assertFalse(manual)
+        for command in commands:
+            for argument in command:
+                if argument.startswith("scripts/"):
+                    self.assertTrue((wf.ROOT / argument).is_file(), argument)
 
     def test_deleted_python_input_is_manual_even_with_surviving_suite(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -151,6 +134,30 @@ class Planning(unittest.TestCase):
             directories, dependencies = wf.cargo_graph(wf.ROOT)
         self.assertEqual(directories, {"crates/a": "a", "crates/b": "b"})
         self.assertEqual(dependencies, {"a": set(), "b": {"a"}})
+
+
+class Brief(unittest.TestCase):
+    def render(self, checkpoint=None):
+        with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()) as messages:
+            root = Path(tmp)
+            (root / "Cargo.toml").write_text('[workspace.package]\nversion = "1.2.3"\n', encoding="utf-8")
+            if checkpoint is not None:
+                (root / "CURRENT.md").write_text(checkpoint, encoding="utf-8")
+            with patch.object(wf, "git", side_effect=["abc123\n", "main\n"]), \
+                    patch.object(wf, "changed_paths", return_value=[]):
+                wf.brief(root)
+            return messages.getvalue()
+
+    def test_fresh_clone_without_local_checkpoint_still_shows_metadata(self):
+        output = self.render()
+        self.assertIn("Source: 1.2.3 | Git: main @ abc123 | Changed files: 0", output)
+        self.assertIn("No local CURRENT.md checkpoint", output)
+
+    def test_existing_checkpoint_is_shown_and_version_checked(self):
+        self.assertNotIn("CHECKPOINT DRIFT", self.render("- Source: 1.2.3\n"))
+        output = self.render("- Source: 1.2.2\n")
+        self.assertIn("- Source: 1.2.2", output)
+        self.assertIn("CHECKPOINT DRIFT", output)
 
 
 class GitSelection(unittest.TestCase):

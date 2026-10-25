@@ -1,12 +1,11 @@
-## Description
-Brief summary of the changes introduced in this pull request and the rationale behind them.
+## Changes
+<!-- Describe the problem and resulting behavior. Link related issues when applicable. -->
 
-## Related Issues
-Closes #(issue number)
+## Validation
+<!-- List commands and observed results. Explain skipped checks or missing inputs. -->
 
-## Changes Checklist
-- [ ] Code compiles cleanly on stable Rust (`x86_64-pc-windows-msvc`).
-- [ ] Added or updated automated unit tests covering the changes.
-- [ ] Verified all tests pass via `cargo test --workspace --locked`.
-- [ ] Preserved safety boundaries: zero hardcoded secrets, zero copyrighted dumps or binary game files included.
-- [ ] Documentation updated (`README.md`, specs, inline rustdocs).
+## Checklist
+- [ ] Relevant checks from [Testing](https://github.com/ecdysterone89077/toram-companion-oss#testing) pass.
+- [ ] Changed behavior has regression coverage where applicable.
+- [ ] Documentation reflects the final behavior.
+- [ ] No secrets, copyrighted dumps, or binary game files are included.

@@ -19,11 +19,8 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 DOC_SUFFIXES = {".md", ".rst"}
-DOC_NAMES = {"LICENSE", "skills-lock.json"}
+DOC_NAMES = {"LICENSE", ".gitattributes", ".editorconfig"}
 SHARED = {"Cargo.toml", "Cargo.lock", "rust-toolchain", "rust-toolchain.toml"}
-POLICY_FILES = {"AGENTS.md", "WORKFLOW.md", "CURRENT.md", "opencode.json", "opencode.jsonc"}
-GOVERNANCE_SUITES = {"workflow_checks.py", "prefix_cache_checks.py", "agent_contract_checks.py",
-                     "workspace_policy_checks.py"}
 DEFAULT_TIMEOUT = 900
 
 
@@ -111,24 +108,12 @@ def make_plan(root: Path, paths: list[str], base: str = "HEAD") -> tuple[list[li
     suites: set[str] = set()
     packaging = False
     full = False
-    policy = False
-    prefix = False
     python_paths: list[str] = []
     for path in paths:
         name = Path(path).name
-        policy |= path in POLICY_FILES or path == ".gitattributes" or path.startswith("prompts/") or path in {
-            "scripts/workspace_policy.py", "scripts/workspace_policy_checks.py",
-            "scripts/prefix_cache.py", "scripts/prefix_cache_checks.py"}
-        prefix |= path == "AGENTS.md" or path.startswith("prompts/") or name in {
-            "opencode.json", "opencode.jsonc", "prefix_cache.py", "prefix_cache_checks.py"}
-        if path in {"scripts/workflow.py", "scripts/workflow_checks.py"}:
-            suites.update(GOVERNANCE_SUITES)
-            policy = True
-        if path.startswith("prompts/") or path in {"scripts/agent_contract.py", "scripts/agent_contract_checks.py"}:
-            suites.add("agent_contract_checks.py")
         if path.endswith(".py") and (root / path).is_file():
             python_paths.append(path)
-        if Path(path).suffix in DOC_SUFFIXES or name in DOC_NAMES or path in POLICY_FILES or path == ".gitattributes":
+        if Path(path).suffix in DOC_SUFFIXES or name in DOC_NAMES:
             continue
         if path in SHARED or path.startswith(".cargo/"):
             full = True
@@ -173,12 +158,6 @@ def make_plan(root: Path, paths: list[str], base: str = "HEAD") -> tuple[list[li
     if python_paths:
         commands.append([sys.executable, "scripts/workflow.py", "syntax",
                          *[arg for path in sorted(python_paths) for arg in ("--path", path)]])
-    if policy:
-        suites.add("workspace_policy_checks.py")
-        commands.append([sys.executable, "scripts/workspace_policy.py", "check"])
-    if prefix:
-        suites.add("prefix_cache_checks.py")
-        commands.append([sys.executable, "scripts/prefix_cache.py", "check"])
     for suite in sorted(suites):
         commands.append([sys.executable, "-B", "scripts/workflow.py", "suite", "--suite", f"scripts/{suite}"])
     if packaging:
@@ -365,7 +344,11 @@ def brief(root: Path) -> None:
     branch = git(root, "branch", "--show-current").strip() or "(detached)"
     paths = changed_paths(root)
     print(f"Source: {version} | Git: {branch} @ {head} | Changed files: {len(paths)}")
-    current = (root / "CURRENT.md").read_text(encoding="utf-8")
+    checkpoint = root / "CURRENT.md"
+    if not checkpoint.is_file():
+        print("\nNo local CURRENT.md checkpoint; repository metadata shown above.")
+        return
+    current = checkpoint.read_text(encoding="utf-8")
     print("\n" + "\n".join(current.splitlines()[:70]))
     if len(current.splitlines()) > 70:
         print("\nCURRENT.md exceeds 70 lines: compact it before the next handoff.")

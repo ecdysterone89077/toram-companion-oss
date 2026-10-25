@@ -29,17 +29,13 @@ This project and everyone participating in it is governed by our [Code of Conduc
    git checkout -b feature/my-new-feature
    ```
 2. **Follow Rust Idioms & Formatting**:
-   - Ensure the code compiles cleanly on stable Rust (`x86_64-pc-windows-msvc`).
-   - Run `cargo fmt` and ensure no compilation warnings:
-     ```bash
-     cargo check --workspace --all-targets
-     ```
+   - Target `x86_64-pc-windows-msvc` and format Rust changes with `cargo fmt --all`.
+   - Keep changes focused and preserve the repository's zero-external-crate dependency model.
 3. **Write & Run Tests**:
-   - Add unit tests for any new functionality, offset resolution, or protocol messages.
-   - Run the automated test suite before opening your PR:
-     ```powershell
-     cargo xtask test
-     ```
+   - Add regression coverage for changed behavior.
+   - Run the commands in [Testing](README.md#testing), matching CI: Python regressions,
+     Rust formatting, Clippy, workspace tests, and packaging regressions.
+   - Record the commands and results in the pull request, including skipped checks.
 4. **Adhere to Open Source & Legal Guidelines**:
    - Do **NOT** commit copyrighted game assets, decompiled proprietary source code dumps (e.g. `dump.cs`), or proprietary binaries (`.exe`, `.dll`, `.apk`).
    - Do **NOT** commit any personal access tokens, passwords, or secrets.
@@ -51,16 +47,17 @@ This project and everyone participating in it is governed by our [Code of Conduc
 
 ### Prerequisites
 - 64-bit Windows 10/11
-- [Rust](https://www.rust-lang.org/tools/install) (stable `x86_64-pc-windows-msvc`)
+- [Rust](https://www.rust-lang.org/tools/install) 1.99 or newer (stable `x86_64-pc-windows-msvc`)
 - Visual Studio 2022 C++ Build Tools (with Windows SDK)
 - PowerShell 7 for release packaging
+- Python 3.11 or newer for the standard-library-only script checks
 
 ### Workspace Build Commands
 - Build all debug targets:
   ```bash
-  cargo build --workspace
+  cargo build --workspace --locked --offline
   ```
-- Build optimized release binaries:
+- Test, build, and stage optimized release binaries:
   ```powershell
   cargo xtask build
   ```
@@ -68,6 +65,17 @@ This project and everyone participating in it is governed by our [Code of Conduc
   ```powershell
   cargo xtask test
   ```
+
+For smaller local iterations, preview the checks selected for changed files:
+
+```powershell
+python -B scripts/workflow.py plan
+python -B scripts/workflow.py check
+```
+
+The helper reports files needing manual verification and saves check receipts
+under `work/workflow/`. See the [script index](scripts/README.md) for explicit
+path selection and the [README](README.md#build) for packaging staged binaries.
 
 ---
 
