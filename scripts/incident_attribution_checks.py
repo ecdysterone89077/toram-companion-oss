@@ -8,10 +8,10 @@ core-loaded, must fail here rather than silently weaken an attribution.
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import incident_attribution as ia
 
@@ -19,7 +19,8 @@ import incident_attribution as ia
 class ShadowNaming(unittest.TestCase):
     def test_fnv1a64_matches_the_known_candidate_pair(self):
         core = ia.REPO / "work" / "repair-20261021" / "candidate" / "src" / "wcore.dll"
-        self.assertTrue(core.exists(), "candidate core missing")
+        if not core.is_file():
+            self.skipTest("archived candidate core is not bundled")
         self.assertEqual(ia.shadow_name_for(core), "dxgi_ext_ea4e2587f1b98a6e.dll")
 
     def test_fnv1a64_is_stable_and_distinguishes_binaries(self):
@@ -43,8 +44,8 @@ class LogContinuity(unittest.TestCase):
     def test_preserved_log_is_a_prefix_of_the_live_log(self):
         preserved = ia.INCIDENT / "wcore-preserved.log"
         live = ia.TEMP / "wcore.log"
-        if not live.exists():
-            self.skipTest("live global log not present on this machine")
+        if not preserved.is_file() or not live.is_file():
+            self.skipTest("preserved incident log and live global log are required")
         append_only, old_len, new_len = ia.log_is_append_only(preserved, live)
         self.assertTrue(append_only, "global log was rotated or truncated")
         self.assertLess(old_len, new_len)
@@ -54,9 +55,20 @@ class LogContinuity(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             live = Path(tmp) / "live.log"
             live.write_bytes(b"completely different content")
-            preserved = ia.INCIDENT / "wcore-preserved.log"
+            preserved = Path(tmp) / "preserved.log"
+            preserved.write_bytes(b"original content")
             append_only, _, _ = ia.log_is_append_only(preserved, live)
             self.assertFalse(append_only)
+
+    def test_prefix_check_accepts_append_and_rejects_truncation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            preserved = Path(tmp) / "preserved.log"
+            live = Path(tmp) / "live.log"
+            preserved.write_bytes(b"original")
+            live.write_bytes(b"original plus appended")
+            self.assertEqual(ia.log_is_append_only(preserved, live), (True, 8, 22))
+            live.write_bytes(b"orig")
+            self.assertEqual(ia.log_is_append_only(preserved, live), (False, 8, 4))
 
 
 class LoadMarkerParsing(unittest.TestCase):
@@ -72,26 +84,54 @@ class LoadMarkerParsing(unittest.TestCase):
         self.assertEqual(ia.loaded_pids(text), set())
 
 
-class IncidentClassification(unittest.TestCase):
+class IncidentFixture(unittest.TestCase):
+    """Synthetic on-disk evidence; never reads a machine's real incident logs."""
+
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        locations = {name: root / name.lower()
+                     for name in ("REPO", "TEMP", "INCIDENT", "REPAIR", "ORIGINAL")}
+        for location in locations.values():
+            location.mkdir()
+        patched = patch.multiple(ia, **locations)
+        patched.start()
+        self.addCleanup(patched.stop)
+        marker = "=== wcore94 (Rust) attached PID=17024 base=0x1000 ===\n"
+        (ia.INCIDENT / "wcore-preserved.log").write_text(marker, encoding="utf-8")
+        (ia.TEMP / "wcore.log").write_text(marker + "appended event\n", encoding="utf-8")
+        inventory = [{"ModuleName": "ntdll.dll"}, {"ModuleName": "UnityPlayer.dll"}]
+        (ia.INCIDENT / "modules.json").write_text(json.dumps(inventory), encoding="utf-8")
+        (ia.REPAIR / "modules-before.json").write_text(json.dumps(inventory), encoding="utf-8")
+        (ia.REPAIR / "core-modules.json").write_text(
+            json.dumps({"ModuleName": "dxgi_ext_af63dc4c8601ec8c.dll"}), encoding="utf-8")
+        (ia.ORIGINAL / "wcore-before.log").write_text(marker, encoding="utf-8")
+
+
+class IncidentClassification(IncidentFixture):
     def test_the_incident_process_has_no_core(self):
         report = ia.classify_incident()
-        if report.get("error"):
-            self.skipTest(report["error"])
+        self.assertNotIn("error", report)
         self.assertTrue(report["log_append_only"])
         self.assertEqual(report["log_occurrences_14516"], 0)
         self.assertFalse(report["incident_has_core_module"])
-        self.assertEqual(report["incident_module_count"], 121)
+        self.assertEqual(report["incident_module_count"], 2)
+
+    def test_a_core_in_the_inventory_is_detected(self):
+        (ia.INCIDENT / "modules.json").write_text(
+            json.dumps([{"ModuleName": "dxgi_ext_af63dc4c8601ec8c.dll"}]), encoding="utf-8")
+        self.assertTrue(ia.classify_incident()["incident_has_core_module"])
 
     def test_the_module_collector_has_a_working_positive_control(self):
         control = ia.classify_repair_control()
         self.assertTrue(control["control_has_core"])
         self.assertFalse(control["pre_load_has_core"])
-        self.assertEqual(control["control_core_module"], "dxgi_ext_ea4e2587f1b98a6e.dll")
+        self.assertEqual(control["control_core_module"], "dxgi_ext_af63dc4c8601ec8c.dll")
 
     def test_the_original_warning_session_did_have_the_core(self):
         original = ia.classify_original()
-        if original.get("error"):
-            self.skipTest(original["error"])
+        self.assertNotIn("error", original)
         self.assertTrue(original["has_load_marker"])
         self.assertGreater(original["pid_17024_occurrences"], 0)
 
@@ -106,13 +146,17 @@ class ModuleNamePattern(unittest.TestCase):
 
 class ShadowTimeline(unittest.TestCase):
     def test_known_cores_map_to_their_recorded_shadows(self):
+        required = ("work/release-v96.1/src/wcore.dll", "work/release-v96.2/src/wcore.dll",
+                    "work/repair-20261021/candidate/src/wcore.dll")
+        if not all((ia.REPO / path).is_file() for path in required):
+            self.skipTest("historical core binaries are not bundled")
         shadows = ia.shadow_timeline()
         self.assertEqual(shadows["v0.96.1"]["shadow"], "dxgi_ext_628b2fbac55147f6.dll")
         self.assertEqual(shadows["v0.96.2"]["shadow"], "dxgi_ext_e178700456260f6f.dll")
         self.assertEqual(shadows["candidate"]["shadow"], "dxgi_ext_ea4e2587f1b98a6e.dll")
 
 
-class SummaryShape(unittest.TestCase):
+class SummaryShape(IncidentFixture):
     def test_summary_is_json_serialisable(self):
         report = ia.summary()
         json.dumps(report)

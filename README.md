@@ -1,5 +1,6 @@
 # Toram Companion
 
+[![CI](https://github.com/ecdysterone89077/toram-companion-oss/actions/workflows/ci.yml/badge.svg)](https://github.com/ecdysterone89077/toram-companion-oss/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.99%2B-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey.svg)](#build)
@@ -47,11 +48,13 @@ activation rolls back, and OFF restores the captured values exactly.
   originals byte-for-byte.
 - **No collision** — gravity, ignore-height, move-height-range, floor-hit and
   on-ground-move fields, each with its own original-value capture and rollback.
-- **Critical-damage ladder** — the server-accepted tiers are +100/+200/+300.
+- **Critical-damage ladder** — selectable +100/+200/+300 tiers; the
+  [historical observations](specs/SAFE_CRIT_LADDER_20261019.md) do not establish
+  universal acceptance limits.
   The historical +1000 override remains available for compatibility but is
   labelled UNSAFE; its failure mode is documented in
-  `specs/CRIT_DAMAGE_1000_20261019.md`.
-- **Critical-rate and MP ladders** — accepted-value ladders with the same
+  [critical-damage record](specs/CRIT_DAMAGE_1000_20261019.md).
+- **Critical-rate and MP ladders** — selectable ladders with the same
   ownership and restore rules.
 - **Capture channel** — timestamped local/received combat observations written
   to a per-process capture file for offline analysis.
@@ -62,19 +65,32 @@ Prerequisites:
 
 - Windows x64
 - Rust 1.99 or newer (`rustup default stable`)
+- Visual Studio 2022 C++ Build Tools with the Windows SDK
 - PowerShell 7 for the release packager
+- Python 3.11 or newer for the offline script checks
+
+From the repository root, test, build, and stage the four release artifacts:
 
 ```powershell
-cargo build --release --workspace
+cargo xtask build
 ```
 
-A reproducible release package (Windows bundle plus source archive, every
-archive entry read back and verified, with checksums and a manifest) is
-produced by:
+This stages `companion.exe` and `observer.exe` in the repository root, with
+`wcore.dll` and `wboot.exe` under `src/`. For a compile-only build, use
+`cargo build --release --workspace --locked --offline`; its outputs stay in
+`target/x86_64-pc-windows-msvc/release/`.
+
+After staging, create Windows and source archives with checksums and a manifest.
+Read the version from the workspace so the package label matches the source:
 
 ```powershell
-pwsh ./package-release.ps1 -Version 0.96.4
+$version = python -c "import tomllib; print(tomllib.load(open('Cargo.toml', 'rb'))['workspace']['package']['version'])"
+pwsh -NoProfile -File ./package-release.ps1 -Version $version
 ```
+
+The packager verifies archive entries against the staged inputs and writes
+outputs under `dist/`. It packages existing binaries; it does not build them
+or establish reproducible source-to-binary correspondence.
 
 ## Usage
 
@@ -94,27 +110,29 @@ Read telemetry in a separate process (the observer never touches the game):
 
 Command bands are numbered; `0` is the unload/everything-off band. The
 lifecycle rules — activation rollback, OFF restore, worker recovery — and the
-capture format are documented in `specs/`.
+capture format are documented in the [design-record index](specs/README.md).
 
 ## Testing
 
 ```powershell
-cargo fmt   --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test  --workspace --locked
+python -B -m unittest discover -s scripts -p '*_checks.py'
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked --offline -- -D warnings
+cargo test --workspace --locked --offline
+pwsh -NoProfile -File scripts/package_release_checks.ps1
 ```
 
 The workspace suite includes a separate-process reader test and the movement
-field restore checks. Continuous integration runs the same gates on every
-push. Additional offline audit tools live in `scripts/`; they use only the
-Python standard library and never open a process.
+field restore checks. CI runs these gates on pushes to `main`, pull requests,
+and manual dispatch. Python checks that require private metadata or incident archives
+are skipped when those inputs are absent. Packaging checks use synthetic files.
+See the [script index](scripts/README.md) for each tool's inputs and behavior.
 
 ## Documentation
 
 - [`CHANGELOG.md`](CHANGELOG.md) — release history
-- `specs/` — design records: movement safety rework, the validated dimension
-  model behind server acceptance, critical-damage acceptance, MP analysis,
-  stability analysis, and the bug registry
+- [`specs/README.md`](specs/README.md) — design records and bug registry by topic
+- [`scripts/README.md`](scripts/README.md) — offline checks and research utilities
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — workflow and review conventions
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting and intended-use scope
 
